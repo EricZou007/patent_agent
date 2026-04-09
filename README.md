@@ -1,58 +1,68 @@
 # Patent Prior-Art Agent
 
-Conversational patent search and prior-art analysis built on PANORAMA. The project supports:
+Conversational patent search and prior-art analysis built on PANORAMA.
 
-- benchmark evaluation on PANORAMA `PAR4PC`
-- free-text patent search over a local persistent index
+This repository supports:
+
+- PANORAMA `PAR4PC` benchmark evaluation
+- persistent local patent indexing with FAISS
+- free-text patent search
 - grounded QA over retrieved patent evidence
 - multi-turn follow-up handling with working-set reuse
-- claim decomposition, evidence extraction, and verification for benchmark cases
+- benchmark claim decomposition, evidence extraction, and verification
 
-This repo is set up for local development and GitHub sharing. Secrets are not committed.
+This README includes:
 
-## What It Does
+1. full setup from scratch
+2. data layout
+3. index building
+4. all main experiment commands
+5. demo / UI steps
 
-There are two main modes:
+## 1. Requirements
 
-1. **Free-text Search**
-   - enter a claim, invention description, or vague query
-   - retrieve related patents
-   - answer from retrieved evidence
-   - handle follow-up questions like:
-     - `Which of those includes access control?`
-     - `Compare the top two`
-     - `If I combine that with smart invitations, what should I inspect next?`
+Install these first:
 
-2. **Benchmark Analysis**
-   - run on labeled PANORAMA `PAR4PC` cases
-   - rank A-H candidate patents
-   - decompose the claim
-   - extract evidence
-   - render a structured report
+- `git`
+- `conda`
+- Python `3.10` compatible environment
 
-## Repo Layout
+Optional:
 
-```text
-app.py                     Streamlit UI
-src/
-  build_patent_index.py    Build persistent FAISS index
-  run_free_text_demo.py    Single-turn CLI QA demo
-  run_conversation_demo.py Multi-turn CLI conversation demo
-  evaluate_par4pc.py       Benchmark evaluation
-  graph.py                 Benchmark workflow
-  llm_tools.py             OpenAI-backed grounded answer / verification helpers
-  query_planner.py         Follow-up intent + retrieval policy
-  persistent_index.py      Persistent FAISS index I/O
-scripts/
-  run_app.sh               Streamlit launcher
-environment.yml
-requirements.txt
-.env.example
+- OpenAI API key for LLM-grounded answers and LLM-backed benchmark steps
+
+## 2. Clone Repositories
+
+Clone this repo:
+
+```bash
+git clone <your-patent-agent-repo-url>
+cd patent-agent
 ```
 
-## Setup
+Clone PANORAMA as a sibling directory:
 
-### 1. Create or activate the environment
+```bash
+cd ..
+git clone https://github.com/LGAI-Research/PANORAMA.git
+cd patent-agent
+```
+
+Recommended directory layout:
+
+```text
+workspace/
+  PANORAMA/
+  patent-agent/
+```
+
+The code assumes local PANORAMA sample benchmark files live at:
+
+```text
+../PANORAMA/data/benchmark/par4pc
+```
+
+## 3. Create Environment
 
 Using Conda:
 
@@ -61,50 +71,54 @@ conda env create -f environment.yml
 conda activate patent-agent
 ```
 
-Or install manually:
+If you prefer manual install:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. Optional OpenAI setup
+## 4. Configure Secrets
 
-Copy the example env file:
+Copy the example environment file:
 
 ```bash
 cp .env.example .env
 ```
 
-Then fill in:
+Then edit `.env`:
 
-```bash
+```text
 OPENAI_API_KEY=your_key_here
 PATENT_AGENT_MODEL=gpt-4o-mini
 ```
 
-`.env` is gitignored.
+Notes:
 
-### 3. Clone PANORAMA separately
+- `.env` is gitignored
+- without `OPENAI_API_KEY`, the system still works using heuristic grounded answers
+- LLM-grounded answer, LLM claim decomposition, and LLM verification require the key
 
-This repo expects the PANORAMA benchmark samples to be available locally, for example as a sibling folder:
+## 5. Verify Basic Setup
 
-```text
-your-workspace/
-  PANORAMA/
-  patent-agent/
+Run syntax and import checks:
+
+```bash
+python -m compileall app.py src
+python -c "import app; print('app import ok')"
 ```
 
-Default local benchmark path used by the code:
+Expected:
 
-```text
-../PANORAMA/data/benchmark/par4pc
-```
+- no syntax errors
+- prints `app import ok`
 
-## Quick Start
+## 6. Build a Persistent Local Index
 
-### Build a persistent local demo index
+This project supports free-text search over a persistent FAISS index.
 
-This builds a small combined demo index from local PANORAMA sample patents plus a small Hub-backed PAR4PC slice.
+### Recommended demo index
+
+Build the combined demo index:
 
 ```bash
 python -m src.build_patent_index \
@@ -113,100 +127,320 @@ python -m src.build_patent_index \
   --index-dir data/indexes/par4pc_patentsberta_demo
 ```
 
-### Run the UI
+This creates:
 
-```bash
-./scripts/run_app.sh
+```text
+data/indexes/par4pc_patentsberta_demo/
+  index.faiss
+  metadata.parquet
+  manifest.json
 ```
 
-Recommended demo settings:
+### Larger local index
 
-- `Mode = Free-text Search`
-- `Retrieval method = local-embedding`
-- `Free-text patent pool = Persistent local index`
-- `Persistent index directory = data/indexes/par4pc_patentsberta_demo`
-
-Then click `Use example query`.
-
-## CLI Demos
-
-### Single-turn free-text QA
+If you want a larger index:
 
 ```bash
-python -m src.run_free_text_demo
+python -m src.build_patent_index \
+  --pool-source hub \
+  --hub-rows-per-split 2000 \
+  --index-dir data/indexes/par4pc_patentsberta_large
 ```
 
-### Multi-turn conversation demo
+Full split:
 
 ```bash
-python -m src.run_conversation_demo
+python -m src.build_patent_index \
+  --pool-source hub \
+  --hub-rows-per-split 0 \
+  --index-dir data/indexes/par4pc_patentsberta_full
 ```
 
-### Benchmark evaluation
+Notes:
+
+- `combined` = local PANORAMA sample patents + Hub slice
+- `hub-rows-per-split 0` means full train/validation/test
+- first build can take time because the embedding model is loaded and the patent texts are encoded
+
+## 7. Main Experiment Commands
+
+This section lists all major experiments and evaluation commands.
+
+### 7.1 Benchmark retrieval evaluation
+
+Default:
+
+```bash
+python -m src.evaluate_par4pc
+```
+
+PatentSBERTa local embedding:
 
 ```bash
 python -m src.evaluate_par4pc --retrieval-method local-embedding
 ```
 
-Expected local pilot result on the bundled sample set:
+BM25:
+
+```bash
+python -m src.evaluate_par4pc --retrieval-method bm25
+```
+
+Experimental methods:
+
+```bash
+python -m src.evaluate_par4pc --retrieval-method local-cross-encoder
+python -m src.evaluate_par4pc --retrieval-method openai-embedding
+python -m src.evaluate_par4pc --retrieval-method llm-rerank
+```
+
+Current pilot result on bundled local `PAR4PC` samples:
 
 ```text
+local-embedding retrieval
 hit@1: 0.800
 hit@3: 1.000
 recall@3: 1.000
 exact@|gold|: 0.700
 ```
 
-### Retrieval comparison
+### 7.2 Retrieval comparison table
 
 ```bash
 python -m src.compare_retrieval --output outputs/retrieval_comparison.csv
 ```
 
-## Input Guidance
+This compares:
 
-Best input for retrieval:
+- `bm25`
+- `local-embedding` with patent-domain and general-domain models
+- `local-cross-encoder` rerankers
 
-- patent claim text, e.g. `1. A method comprising: ...`
+### 7.3 Benchmark report generation
+
+Heuristic / no-LLM:
+
+```bash
+python -m src.run_demo --retrieval-method local-embedding --output outputs/demo_report_verified.md
+```
+
+With LLM-backed benchmark steps:
+
+```bash
+python -m src.run_demo \
+  --retrieval-method llm-rerank \
+  --llm-decompose \
+  --llm-verify \
+  --output outputs/demo_report_llm.md
+```
+
+### 7.4 Single-turn free-text QA
+
+Heuristic grounded answer:
+
+```bash
+python -m src.run_free_text_demo
+```
+
+With OpenAI grounded answer:
+
+```bash
+python -m src.run_free_text_demo --llm-answer
+```
+
+### 7.5 Multi-turn conversation demo
+
+```bash
+python -m src.run_conversation_demo
+```
+
+This tests:
+
+1. new search
+2. aspect filter on current results
+3. compare previous results
+4. combination exploration with context-enriched retrieval
+
+## 8. What Each Mode Is For
+
+### Benchmark Analysis
+
+This is for labeled PANORAMA evaluation.
+
+It uses a known `PAR4PC` case and does:
+
+```text
+target claim
+-> rank A-H candidate patents
+-> decompose claim
+-> extract evidence
+-> verify evidence
+-> render report
+```
+
+Use this mode for:
+
+- project evaluation
+- retrieval metrics
+- structured evidence demo
+
+### Free-text Search
+
+This is the user-facing patent search / QA mode.
+
+It does:
+
+```text
+user query or claim
+-> decide whether to retrieve new or reuse context
+-> retrieve or rerank patents
+-> gather evidence snippets
+-> answer from evidence
+```
+
+Use this mode for:
+
+- vague patent search
+- similar patent search
+- aspect filtering
+- follow-up questions
+- combination exploration
+
+## 9. Run the Streamlit UI
+
+Launch:
+
+```bash
+./scripts/run_app.sh
+```
+
+### Recommended demo configuration
+
+Set:
+
+- `Mode = Free-text Search`
+- `Retrieval method = local-embedding`
+- `Free-text patent pool = Persistent local index`
+- `Persistent index directory = data/indexes/par4pc_patentsberta_demo`
+
+Then click:
+
+- `Use example query`
+
+After that, try follow-up questions such as:
+
+```text
+Which of those also includes access control for the requested information?
+```
+
+```text
+Compare the top two patents for participant context and profile handling.
+```
+
+```text
+If I combine that with smart invitations, what related patents should I inspect next?
+```
+
+### Recommended benchmark configuration
+
+Set:
+
+- `Mode = Benchmark Analysis`
+- `Retrieval method = local-embedding`
+
+Then:
+
+- select a `PAR4PC` case
+- click `Analyze Benchmark Case`
+
+## 10. Manual Test Procedure
+
+If you want a minimal end-to-end test on a fresh machine, run these in order:
+
+```bash
+python -m compileall app.py src
+python -m src.build_patent_index --pool-source combined --hub-rows-per-split 50 --index-dir data/indexes/par4pc_patentsberta_demo
+python -m src.evaluate_par4pc --retrieval-method local-embedding
+python -m src.run_free_text_demo
+python -m src.run_conversation_demo
+./scripts/run_app.sh
+```
+
+This covers:
+
+- code integrity
+- index build
+- benchmark retrieval
+- single-turn QA
+- multi-turn QA
+- UI demo
+
+## 11. Input Guidance
+
+Best input:
+
+- full patent claim text, e.g. `1. A method comprising: ...`
 
 Also supported:
 
 - invention description
-- vague technical search query
-- follow-up question over prior retrieved results
+- vague technical query
+- question over current retrieved results
 
-## Conversation Behavior
+Examples:
 
-Free-text mode uses a simple planner:
+```text
+patents about event participants getting personalized information during a live event
+```
 
-- **new search** -> retrieve over the selected corpus
-- **follow-up / aspect filter** -> rerank the current working patent set
-- **comparison** -> compare within current results
-- **combination exploration** -> retrieve again with prior context included
+```text
+find patents similar to systems and methods for presenting information extracted from one or more data sources to event participants
+```
 
-The planner decision is shown in the UI.
+```text
+Which of those also includes access control for the requested information?
+```
 
-## Notes
+## 12. What Works Without OpenAI
 
-- Without `OPENAI_API_KEY`, the system still works using heuristic grounded answers.
-- With `OPENAI_API_KEY`, free-text mode can generate LLM-grounded answers from retrieved evidence only.
-- This tool is for technical prior-art exploration and evidence-grounded search, not legal advice.
+Without `OPENAI_API_KEY`, these still work:
 
-## Preparing for GitHub
+- benchmark retrieval
+- benchmark report generation with heuristic decomposition / verification
+- persistent index build
+- free-text retrieval
+- heuristic grounded QA
+- multi-turn planner and working-set reuse
 
-Secrets and generated artifacts are excluded:
+These require OpenAI:
+
+- `Use LLM grounded answer`
+- `Use LLM claim decomposition`
+- `Use LLM evidence verification`
+- `openai-embedding`
+- `llm-rerank`
+
+## 13. Notes and Limitations
+
+- This is a technical prior-art exploration tool, not legal advice.
+- The planner for conversational follow-up is heuristic, not fully autonomous.
+- The benchmark evaluation is strongest on `PAR4PC`; free-text QA is a demo-oriented extension.
+- The quality of free-text search depends on the persistent index coverage.
+
+## 14. Preparing for GitHub
+
+Ignored by git:
 
 - `.env`
+- `.venv/`
 - `outputs/`
 - `data/indexes/`
-- local caches and virtual environments
+- caches
+- local Streamlit secrets
 
-To publish:
+To push this repo:
 
 ```bash
-git init -b main
-git add .
-git commit -m "Initial commit"
 git remote add origin <your-github-repo-url>
 git push -u origin main
 ```
