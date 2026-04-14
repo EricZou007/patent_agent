@@ -6,6 +6,7 @@ from pathlib import Path
 from src.data_loader import load_hf_par4pc_cases
 from src.patent_rerank import rank_candidates_hybrid_coverage, rank_candidates_patent_specialized
 from src.retrieval import rank_candidates_bm25, rank_candidates_local_embeddings
+from src.train_linear_patent_reranker import rank_case_with_default_linear_reranker
 
 
 def evaluate_cases(cases, retrieval_method: str, top_k: int, embedding_model: str) -> dict[str, float]:
@@ -35,6 +36,29 @@ def evaluate_cases(cases, retrieval_method: str, top_k: int, embedding_model: st
                 top_k=top_k,
                 embedding_model=embedding_model,
             )
+        elif retrieval_method == "linear-patent-reranker":
+            ranked_letters = rank_case_with_default_linear_reranker(
+                case,
+                top_k=top_k,
+                embedding_model=embedding_model,
+            )
+            letter_to_result = {
+                result.letter: result
+                for result in rank_candidates_local_embeddings(
+                    case,
+                    top_k=None,
+                    embedding_model=embedding_model,
+                )
+            }
+            ranked = [
+                letter_to_result[letter].__class__(
+                    letter=letter_to_result[letter].letter,
+                    score=score,
+                    patent_id=letter_to_result[letter].patent_id,
+                    title=letter_to_result[letter].title,
+                )
+                for letter, score in ranked_letters
+            ]
         else:
             raise ValueError(f"Unsupported retrieval method: {retrieval_method}")
 
@@ -67,8 +91,8 @@ def main() -> None:
     parser.add_argument(
         "--methods",
         nargs="+",
-        default=["bm25", "local-embedding", "hybrid-coverage", "patent-specialized"],
-        choices=["bm25", "local-embedding", "hybrid-coverage", "patent-specialized"],
+        default=["bm25", "local-embedding", "hybrid-coverage", "patent-specialized", "linear-patent-reranker"],
+        choices=["bm25", "local-embedding", "hybrid-coverage", "patent-specialized", "linear-patent-reranker"],
     )
     args = parser.parse_args()
 

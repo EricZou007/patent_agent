@@ -90,6 +90,11 @@ def main() -> None:
             embedding_model="AI-Growth-Lab/PatentSBERTa",
         ),
         RetrievalConfig(
+            name="Linear Patent Reranker",
+            method="linear-patent-reranker",
+            embedding_model="AI-Growth-Lab/PatentSBERTa",
+        ),
+        RetrievalConfig(
             name="PatentSBERTa",
             method="local-embedding",
             embedding_model="AI-Growth-Lab/PatentSBERTa",

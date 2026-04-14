@@ -11,6 +11,7 @@ __pycache__/
 
 outputs/
 data/indexes/
+data/models/
 data/cache/
 *.faiss
 *.pkl

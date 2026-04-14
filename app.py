@@ -32,9 +32,9 @@ DEFAULT_INDEX_DIR = Path("data/indexes/par4pc_patentsberta_demo")
 DEFAULT_EMBEDDING_MODEL = "AI-Growth-Lab/PatentSBERTa"
 DEFAULT_RERANKER_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 FREE_TEXT_PRIMARY_RETRIEVAL_OPTIONS = ["bm25", "local-embedding"]
-BENCHMARK_PRIMARY_RETRIEVAL_OPTIONS = ["local-embedding", "patent-specialized", "bm25"]
+BENCHMARK_PRIMARY_RETRIEVAL_OPTIONS = ["local-embedding", "bm25"]
 FREE_TEXT_EXPERIMENTAL_OPTIONS = ["patent-specialized", "hybrid-coverage", "local-cross-encoder"]
-BENCHMARK_EXPERIMENTAL_OPTIONS = ["patent-specialized", "hybrid-coverage", "local-cross-encoder", "openai-embedding", "llm-rerank"]
+BENCHMARK_EXPERIMENTAL_OPTIONS = ["linear-patent-reranker", "patent-specialized", "hybrid-coverage", "local-cross-encoder", "openai-embedding", "llm-rerank"]
 DEFAULT_FREE_TEXT = (
     "1. A method for leveraging social networks in physical gatherings, the method comprising: "
     "generating, by one or more computer processors, a profile for each participant of one or more "
@@ -300,7 +300,8 @@ def render_benchmark_mode(
 ) -> None:
     st.info(
         "Benchmark Analysis is the labeled PAR4PC evaluation path. "
-        "Use `local-embedding` as the stable default. Compare against `patent-specialized` as an experimental patent-aware reranker."
+        "Use `local-embedding` as the stable default. "
+        "Compare against `linear-patent-reranker` as the current learned benchmark experiment."
     )
     case_paths = list_case_paths(data_dir)
     if not case_paths:
@@ -580,7 +581,7 @@ def main() -> None:
         if mode == "Free-text Search":
             st.caption("Recommended retrieval: `bm25` on larger pools. Use experimental methods only for comparison.")
         else:
-            st.caption("Recommended retrieval: `local-embedding` as the current stable benchmark default; compare `patent-specialized` experimentally.")
+            st.caption("Recommended retrieval: `local-embedding` as the current stable benchmark default; compare `linear-patent-reranker` experimentally.")
         data_dir = st.text_input("PAR4PC data directory", value=str(DEFAULT_DATA_DIR))
         top_k = st.slider("Top-k prior art", min_value=1, max_value=8, value=3)
         show_experimental = st.checkbox("Show experimental retrieval methods", value=False)
@@ -601,6 +602,8 @@ def main() -> None:
         )
         if retrieval_method in experimental_options:
             st.info("This retrieval path is kept for ablation. It is not the recommended demo default.")
+        if mode == "Benchmark Analysis" and retrieval_method == "linear-patent-reranker":
+            st.caption("First use trains and saves a small linear reranker under `data/models/`. Later runs load the cached model.")
         pool_source = st.selectbox(
             "Free-text patent pool",
             options=["Persistent local index", "Local sample pool", "Hub PAR4PC pool", "Combined"],

@@ -186,6 +186,21 @@ Patent-specific hybrid reranking:
 python -m src.evaluate_par4pc --retrieval-method hybrid-coverage
 ```
 
+Learned linear patent reranker:
+
+```bash
+python -m src.evaluate_par4pc --retrieval-method linear-patent-reranker
+```
+
+Prebuild the cached linear reranker model:
+
+```bash
+python -m src.train_linear_patent_reranker \
+  --mode train-default-model \
+  --splits train \
+  --max-rows-per-split 100
+```
+
 BM25:
 
 ```bash
@@ -214,6 +229,8 @@ Current interpretation:
 
 - `local-embedding` with `AI-Growth-Lab/PatentSBERTa` is still the strongest benchmark default
 - `hybrid-coverage` is a patent-specific ablation that combines dense retrieval, BM25, and limitation coverage, but it does not yet beat PatentSBERTa on the bundled local sample set
+- `linear-patent-reranker` is the current learned benchmark experiment; it is trained on a cached HF train slice and is not the default demo path
+- the cached model is stored under `data/models/` so later processes can load it without retraining
 
 ### 7.2 Retrieval comparison table
 
@@ -228,7 +245,60 @@ This compares:
 - `local-embedding` with patent-domain and general-domain models
 - `local-cross-encoder` rerankers
 
-### 7.3 Benchmark report generation
+### 7.3 Larger-split HF evaluation
+
+Evaluate on a larger Hugging Face `PAR4PC` validation slice:
+
+```bash
+python -m src.evaluate_par4pc_hf \
+  --splits validation \
+  --max-rows-per-split 100 \
+  --methods local-embedding linear-patent-reranker
+```
+
+This is the main way to check whether a retrieval method still holds up beyond the bundled local examples.
+
+### 7.4 Patent-specialized ablation
+
+Run a quick component ablation over the patent-specialized reranker:
+
+```bash
+python -m src.ablate_patent_specialized \
+  --splits validation \
+  --max-rows-per-split 30 \
+  --output outputs/patent_specialized_ablation.csv
+```
+
+### 7.5 Learned linear reranker experiments
+
+Forward-selection table over patent-specialized features:
+
+```bash
+python -m src.train_linear_patent_reranker \
+  --max-rows-per-split 100 \
+  --output outputs/linear_reranker_forward_selection_100.csv
+```
+
+Targeted single-config evaluation for the current best linear subset:
+
+```bash
+python -m src.train_linear_patent_reranker \
+  --mode single \
+  --max-rows-per-split 100 \
+  --feature-names dense_score bm25_score field_lexical_score field_rarity_score coverage_score \
+  --class-weight none \
+  --c-value 4.0
+```
+
+On the current `validation-100` slice, this 5-feature linear reranker slightly improves over pure `local-embedding` on `hit@1` and improves `exact@|gold|`, while remaining simpler than the full hand-tuned `patent-specialized` score.
+
+When trained on a separate HF train slice and evaluated on `validation-100`, the learned linear reranker currently:
+
+- underperforms `local-embedding` slightly on `hit@1`
+- improves `hit@3`, `recall@3`, and `exact@|gold|`
+- remains a better experimental benchmark path than the full hand-tuned `patent-specialized` score
+
+### 7.6 Benchmark report generation
 
 Heuristic / no-LLM:
 
@@ -246,7 +316,7 @@ python -m src.run_demo \
   --output outputs/demo_report_llm.md
 ```
 
-### 7.4 Single-turn free-text QA
+### 7.7 Single-turn free-text QA
 
 Heuristic grounded answer:
 

@@ -28,6 +28,29 @@ class PatentScoreBreakdown:
     final_score: float
 
 
+@dataclass(frozen=True)
+class PatentFeatureVector:
+    patent_id: str
+    dense_score: float
+    bm25_score: float
+    field_dense_score: float
+    field_lexical_score: float
+    field_rarity_score: float
+    coverage_score: float
+    evidence_score: float
+
+    def as_dict(self) -> dict[str, float]:
+        return {
+            "dense_score": self.dense_score,
+            "bm25_score": self.bm25_score,
+            "field_dense_score": self.field_dense_score,
+            "field_lexical_score": self.field_lexical_score,
+            "field_rarity_score": self.field_rarity_score,
+            "coverage_score": self.coverage_score,
+            "evidence_score": self.evidence_score,
+        }
+
+
 FIELD_WEIGHTS = {
     "title": 0.15,
     "abstract": 0.30,
@@ -428,6 +451,54 @@ def rank_patent_pool_patent_specialized(
     use_limitation_fusion: bool = True,
     use_evidence_score: bool = True,
 ) -> list[PatentSearchResult]:
+    feature_vectors = patent_specialized_feature_vectors(
+        query_text=query_text,
+        candidates=candidates,
+        embedding_model=embedding_model,
+        use_query_expansion=use_query_expansion,
+        use_llm_expansion=use_llm_expansion,
+        use_llm_decompose=use_llm_decompose,
+        llm_model=llm_model,
+        use_focused_query=use_focused_query,
+    )
+
+    results = []
+    for candidate in candidates:
+        patent_id = candidate.patent_id
+        feature = feature_vectors[patent_id]
+        weighted_parts = [
+            (0.35, feature.dense_score, True),
+            (0.10, feature.bm25_score, True),
+            (0.10, feature.field_dense_score, use_field_dense),
+            (0.15, feature.field_lexical_score, use_field_lexical),
+            (0.20, feature.field_rarity_score, use_field_rarity),
+            (0.05, feature.coverage_score, use_limitation_fusion),
+            (0.05, feature.evidence_score, use_evidence_score),
+        ]
+        active_weight = sum(weight for weight, _, enabled in weighted_parts if enabled)
+        score = sum(weight * value for weight, value, enabled in weighted_parts if enabled) / max(active_weight, 1e-9)
+        results.append(
+            PatentSearchResult(
+                patent_id=patent_id,
+                title=candidate.title,
+                score=score,
+                candidate=candidate,
+            )
+        )
+    results.sort(key=lambda item: item.score, reverse=True)
+    return results[:top_k] if top_k is not None else results
+
+
+def patent_specialized_feature_vectors(
+    query_text: str,
+    candidates: list[PatentCandidate],
+    embedding_model: str = "AI-Growth-Lab/PatentSBERTa",
+    use_query_expansion: bool = True,
+    use_llm_expansion: bool = False,
+    use_llm_decompose: bool = False,
+    llm_model: str = "",
+    use_focused_query: bool = True,
+) -> dict[str, PatentFeatureVector]:
     query_variants = _query_variants(
         query_text,
         use_query_expansion=use_query_expansion,
@@ -479,30 +550,20 @@ def rank_patent_pool_patent_specialized(
     field_rarity_norm = _normalize_scores(field_rarity_map)
     evidence_norm = _normalize_scores(evidence_map)
 
-    results = []
+    features: dict[str, PatentFeatureVector] = {}
     for candidate in candidates:
         patent_id = candidate.patent_id
-        weighted_parts = [
-            (0.35, dense_norm.get(patent_id, 0.0), True),
-            (0.10, bm25_norm.get(patent_id, 0.0), True),
-            (0.10, field_dense_norm.get(patent_id, 0.0), use_field_dense),
-            (0.15, field_lexical_norm.get(patent_id, 0.0), use_field_lexical),
-            (0.20, field_rarity_norm.get(patent_id, 0.0), use_field_rarity),
-            (0.05, coverage_map.get(patent_id, 0.0), use_limitation_fusion),
-            (0.05, evidence_norm.get(patent_id, 0.0), use_evidence_score),
-        ]
-        active_weight = sum(weight for weight, _, enabled in weighted_parts if enabled)
-        score = sum(weight * value for weight, value, enabled in weighted_parts if enabled) / max(active_weight, 1e-9)
-        results.append(
-            PatentSearchResult(
-                patent_id=patent_id,
-                title=candidate.title,
-                score=score,
-                candidate=candidate,
-            )
+        features[patent_id] = PatentFeatureVector(
+            patent_id=patent_id,
+            dense_score=dense_norm.get(patent_id, 0.0),
+            bm25_score=bm25_norm.get(patent_id, 0.0),
+            field_dense_score=field_dense_norm.get(patent_id, 0.0),
+            field_lexical_score=field_lexical_norm.get(patent_id, 0.0),
+            field_rarity_score=field_rarity_norm.get(patent_id, 0.0),
+            coverage_score=coverage_map.get(patent_id, 0.0),
+            evidence_score=evidence_norm.get(patent_id, 0.0),
         )
-    results.sort(key=lambda item: item.score, reverse=True)
-    return results[:top_k] if top_k is not None else results
+    return features
 
 
 def rank_candidates_hybrid_coverage(

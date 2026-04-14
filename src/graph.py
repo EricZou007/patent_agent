@@ -22,6 +22,7 @@ from src.retrieval import (
     rank_candidates_openai_embeddings,
     results_from_ordered_letters,
 )
+from src.train_linear_patent_reranker import rank_case_with_default_linear_reranker
 
 
 class PatentAgentState(TypedDict, total=False):
@@ -138,6 +139,31 @@ def retrieve_prior_art_node(state: PatentAgentState) -> PatentAgentState:
         except ImportError as exc:
             warnings = list(state.get("warnings", []))
             warnings.append(f"sentence-transformers not installed; used BM25 instead. Detail: {exc}")
+            return {"ranked": rank_candidates_bm25(case, top_k=top_k), "warnings": warnings}
+
+    if retrieval_method == "linear-patent-reranker":
+        try:
+            ranked_letters = rank_case_with_default_linear_reranker(
+                case,
+                top_k=top_k,
+                embedding_model=state.get("embedding_model") or "AI-Growth-Lab/PatentSBERTa",
+            )
+            letter_to_result = {
+                result.letter: result
+                for result in rank_candidates_local_embeddings(
+                    case,
+                    top_k=None,
+                    embedding_model=state.get("embedding_model") or "AI-Growth-Lab/PatentSBERTa",
+                )
+            }
+            ranked = [
+                replace(letter_to_result[letter], score=score)
+                for letter, score in ranked_letters
+            ]
+            return {"ranked": ranked}
+        except ImportError as exc:
+            warnings = list(state.get("warnings", []))
+            warnings.append(f"linear patent reranker unavailable; used BM25 instead. Detail: {exc}")
             return {"ranked": rank_candidates_bm25(case, top_k=top_k), "warnings": warnings}
 
     if retrieval_method == "llm-rerank":
