@@ -14,10 +14,10 @@ from sklearn.model_selection import GroupKFold
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
-from src.data_loader import Par4pcCase, load_hf_par4pc_cases
+from src.data_loader import Par4pcCase, PatentCandidate, load_hf_par4pc_cases
 from src.feature_cache import load_or_build_feature_rows
 from src.patent_rerank import patent_specialized_feature_vectors, rank_candidates_patent_specialized
-from src.retrieval import rank_candidates_local_embeddings
+from src.retrieval import PatentSearchResult, rank_candidates_local_embeddings
 
 
 FEATURE_ORDER = [
@@ -426,6 +426,50 @@ def rank_case_with_default_linear_reranker(
     probs = model.predict_proba(X_case)[:, 1]
     ranked = sorted(zip(letters, probs, strict=True), key=lambda item: item[1], reverse=True)
     return [(letter, float(score)) for letter, score in (ranked[:top_k] if top_k is not None else ranked)]
+
+
+def rank_patent_pool_with_default_linear_reranker(
+    query_text: str,
+    candidates: list[PatentCandidate],
+    top_k: int | None = None,
+    embedding_model: str = "AI-Growth-Lab/PatentSBERTa",
+    train_splits: tuple[str, ...] = DEFAULT_LINEAR_TRAIN_SPLITS,
+    max_rows_per_split: int = DEFAULT_LINEAR_TRAIN_MAX_ROWS,
+    model_path: str | Path = DEFAULT_LINEAR_MODEL_PATH,
+) -> list[PatentSearchResult]:
+    model = get_default_linear_reranker(
+        embedding_model=embedding_model,
+        train_splits=train_splits,
+        max_rows_per_split=max_rows_per_split,
+        model_path=model_path,
+    )
+    feature_vectors = patent_specialized_feature_vectors(
+        query_text=query_text,
+        candidates=candidates,
+        embedding_model=embedding_model,
+        use_query_expansion=False,
+        use_focused_query=True,
+    )
+    scored: list[PatentSearchResult] = []
+    X_case = np.array(
+        [
+            [feature_vectors[candidate.patent_id].as_dict()[name] for name in DEFAULT_LINEAR_FEATURE_NAMES]
+            for candidate in candidates
+        ],
+        dtype=np.float32,
+    )
+    probs = model.predict_proba(X_case)[:, 1]
+    for candidate, score in zip(candidates, probs, strict=True):
+        scored.append(
+            PatentSearchResult(
+                patent_id=candidate.patent_id,
+                title=candidate.title,
+                score=float(score),
+                candidate=candidate,
+            )
+        )
+    scored.sort(key=lambda item: item.score, reverse=True)
+    return scored[:top_k] if top_k is not None else scored
 
 
 def main() -> None:

@@ -1,37 +1,237 @@
 # Patent Prior-Art Agent
 
-Conversational patent search and prior-art analysis built on PANORAMA.
+Patent search and prior-art analysis built on PANORAMA.
 
-This repository supports:
+This repo has two purposes:
 
-- PANORAMA `PAR4PC` benchmark evaluation
-- persistent local patent indexing with FAISS
-- free-text patent search
-- grounded QA over retrieved patent evidence
-- multi-turn follow-up handling with working-set reuse
-- benchmark claim decomposition, evidence extraction, and verification
+1. a **product-style patent agent** for free-text patent search and QA
+2. a **benchmark pipeline** for evaluating retrieval methods on PANORAMA `PAR4PC`
 
-This README includes:
+---
 
-1. full setup from scratch
-2. data layout
-3. index building
-4. all main experiment commands
-5. demo / UI steps
+## 1. What the system does
 
-## 1. Requirements
+### Product mode: `Our Patent Agent`
 
-Install these first:
+Input:
+- patent claim text
+- invention description
+- vague patent search query
+- follow-up question over previous results
 
+Output:
+- related patents
+- optional evidence snippets
+- grounded answer
+- multi-turn follow-up using previous retrieved results
+
+### Benchmark mode: `Benchmark`
+
+Input:
+- one PANORAMA `PAR4PC` case
+
+Output:
+- ranked A-H prior-art candidates
+- claim decomposition
+- evidence chart
+- verification
+- metrics against gold answers
+
+---
+
+## 2. Main methods
+
+This project exposes **two product-level methods** in the UI.
+
+### A. Normal RAG baseline
+
+This is the simple comparison path.
+
+Pipeline:
+
+```text
+persistent local index
+-> retrieve top patents
+-> optional evidence snippets
+```
+
+Current implementation details:
+- patent source: `Persistent local index`
+- retrieval: `local-embedding` / `PatentSBERTa`
+- no planner
+- no second-stage reranker
+- no grounded answer synthesis
+- no answer verification
+
+Purpose:
+- serve as the plain patent-RAG baseline
+- show what a simpler retrieval-only system returns
+
+### B. Our optimized patent agent
+
+This is the main product method.
+
+Pipeline:
+
+```text
+persistent local index coarse recall
+-> linear-patent-reranker second-stage rerank
+-> conversational planner / working-set reuse
+-> evidence extraction
+-> grounded answer
+-> answer verification
+```
+
+What it adds on top of the baseline:
+
+1. **second-stage learned reranking**
+   - uses `linear-patent-reranker`
+   - trained from PANORAMA benchmark data
+
+2. **conversational planner**
+   - decides whether to retrieve again or reuse the current working set
+
+3. **working-set reuse**
+   - follow-up questions operate over previous top results when appropriate
+
+4. **evidence extraction**
+   - selects supporting title / abstract / claim snippets
+
+5. **grounded answer generation**
+   - answers from retrieved evidence instead of only listing patents
+
+6. **answer verification**
+   - checks whether the answer is supported by retrieved evidence
+
+This is the main method to demo.
+
+---
+
+## 3. What each component means
+
+### `Persistent local index`
+
+This is **not** a model.
+
+It is a prebuilt local patent search backend containing:
+- `index.faiss`
+- `metadata.parquet`
+- `manifest.json`
+
+It is used for fast coarse recall in product mode.
+
+### `local-embedding`
+
+This is a retrieval method.
+
+Current implementation:
+- model: `AI-Growth-Lab/PatentSBERTa`
+
+Used as:
+- the product baseline retriever
+- the stable benchmark baseline
+
+### `linear-patent-reranker`
+
+This is a learned reranking method.
+
+It is trained on benchmark-derived patent features and currently uses:
+- `dense_score`
+- `bm25_score`
+- `field_lexical_score`
+
+Used as:
+- the main learned benchmark method
+- the second-stage reranker inside the optimized product pipeline
+
+---
+
+## 4. Why there is a benchmark mode
+
+`Benchmark` exists to answer a different question from the product UI.
+
+### Product mode asks:
+
+> Can a user type a patent idea or claim and get useful related patents plus grounded analysis?
+
+### Benchmark mode asks:
+
+> Do our retrieval methods actually improve prior-art ranking on labeled PANORAMA cases?
+
+So benchmark mode is used for:
+- method comparison
+- retrieval metrics
+- ablations
+- validating rerankers before moving them into the product pipeline
+
+Benchmark mode uses PANORAMA `PAR4PC`, where each case has:
+- one target claim
+- candidate prior-art patents `A-H`
+- gold answers
+
+---
+
+## 5. Current benchmark setup
+
+### Benchmark baseline
+
+`PatentSBERTa baseline`
+
+Pipeline:
+
+```text
+target claim
+-> local-embedding over A-H candidates
+-> ranked candidate letters
+```
+
+### Benchmark improved method
+
+`Our learned reranker`
+
+Pipeline:
+
+```text
+target claim
+-> patent features for A-H candidates
+-> linear-patent-reranker
+-> ranked candidate letters
+```
+
+Current best learned reranker setup:
+- train split: HF `train`
+- train rows: `200`
+- features:
+  - `dense_score`
+  - `bm25_score`
+  - `field_lexical_score`
+
+Representative `validation-100` result:
+
+| Method | hit@1 | hit@3 | recall@3 | exact@|gold| |
+|---|---:|---:|---:|---:|
+| `local-embedding` | 0.590 | 0.860 | 0.802 | 0.470 |
+| `linear-patent-reranker` | 0.600 | 0.910 | 0.850 | 0.510 |
+
+Interpretation:
+- `local-embedding` is the stable baseline
+- `linear-patent-reranker` is the current learned improvement
+
+---
+
+## 6. Setup from scratch
+
+### Requirements
+
+Install first:
 - `git`
 - `conda`
-- Python `3.10` compatible environment
+- Python `3.10`
 
 Optional:
+- OpenAI API key for LLM-backed answer generation / decomposition / verification
 
-- OpenAI API key for LLM-grounded answers and LLM-backed benchmark steps
-
-## 2. Clone Repositories
+### Clone repos
 
 Clone this repo:
 
@@ -48,7 +248,7 @@ git clone https://github.com/LGAI-Research/PANORAMA.git
 cd patent-agent
 ```
 
-Recommended directory layout:
+Expected layout:
 
 ```text
 workspace/
@@ -56,69 +256,39 @@ workspace/
   patent-agent/
 ```
 
-The code assumes local PANORAMA sample benchmark files live at:
-
-```text
-../PANORAMA/data/benchmark/par4pc
-```
-
-## 3. Create Environment
-
-Using Conda:
+### Create environment
 
 ```bash
 conda env create -f environment.yml
 conda activate patent-agent
 ```
 
-If you prefer manual install:
+If needed:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## 4. Configure Secrets
-
-Copy the example environment file:
+### Configure secrets
 
 ```bash
 cp .env.example .env
 ```
 
-Then edit `.env`:
+Then edit `.env` if you want OpenAI-backed features:
 
 ```text
 OPENAI_API_KEY=your_key_here
 PATENT_AGENT_MODEL=gpt-4o-mini
 ```
 
-Notes:
+---
 
-- `.env` is gitignored
-- without `OPENAI_API_KEY`, the system still works using heuristic grounded answers
-- LLM-grounded answer, LLM claim decomposition, and LLM verification require the key
+## 7. Build the persistent local index
 
-## 5. Verify Basic Setup
+The product UI expects a local patent index.
 
-Run syntax and import checks:
-
-```bash
-python -m compileall app.py src
-python -c "import app; print('app import ok')"
-```
-
-Expected:
-
-- no syntax errors
-- prints `app import ok`
-
-## 6. Build a Persistent Local Index
-
-This project supports free-text search over a persistent FAISS index.
-
-### Recommended demo index
-
-Build the combined demo index:
+Recommended demo index:
 
 ```bash
 python -m src.build_patent_index \
@@ -136,9 +306,11 @@ data/indexes/par4pc_patentsberta_demo/
   manifest.json
 ```
 
-### Larger local index
+What this means:
+- `combined` = local PANORAMA sample patents + a small Hub slice
+- good enough for demo and UI testing
 
-If you want a larger index:
+Larger index example:
 
 ```bash
 python -m src.build_patent_index \
@@ -147,52 +319,11 @@ python -m src.build_patent_index \
   --index-dir data/indexes/par4pc_patentsberta_large
 ```
 
-Full split:
+---
 
-```bash
-python -m src.build_patent_index \
-  --pool-source hub \
-  --hub-rows-per-split 0 \
-  --index-dir data/indexes/par4pc_patentsberta_full
-```
+## 8. Prebuild the learned reranker
 
-Notes:
-
-- `combined` = local PANORAMA sample patents + Hub slice
-- `hub-rows-per-split 0` means full train/validation/test
-- first build can take time because the embedding model is loaded and the patent texts are encoded
-
-## 7. Main Experiment Commands
-
-This section lists all major experiments and evaluation commands.
-
-### 7.1 Benchmark retrieval evaluation
-
-Default:
-
-```bash
-python -m src.evaluate_par4pc
-```
-
-PatentSBERTa local embedding:
-
-```bash
-python -m src.evaluate_par4pc --retrieval-method local-embedding
-```
-
-Patent-specific hybrid reranking:
-
-```bash
-python -m src.evaluate_par4pc --retrieval-method hybrid-coverage
-```
-
-Learned linear patent reranker:
-
-```bash
-python -m src.evaluate_par4pc --retrieval-method linear-patent-reranker
-```
-
-Prebuild the cached linear reranker model:
+If you want the improved method to be ready before the UI starts:
 
 ```bash
 python -m src.train_linear_patent_reranker \
@@ -201,7 +332,13 @@ python -m src.train_linear_patent_reranker \
   --max-rows-per-split 200
 ```
 
-Prebuild feature caches used by the learned reranker experiments:
+This saves:
+- `data/models/linear_patent_reranker_patentsberta_train200_3feat.joblib`
+- `data/models/linear_patent_reranker_patentsberta_train200_3feat.json`
+
+After that, the reranker loads from disk instead of retraining.
+
+Optional feature cache prebuild:
 
 ```bash
 python -m src.feature_cache \
@@ -217,53 +354,66 @@ python -m src.feature_cache \
   --namespace scan_eval_100cases
 ```
 
-BM25:
+---
+
+## 9. How to run the system
+
+Always activate the environment first:
 
 ```bash
-python -m src.evaluate_par4pc --retrieval-method bm25
+cd "/Users/jonathanwang/Desktop/Emory/Year_4_Sem_2/CS 329/patent-agent"
+conda activate patent-agent
 ```
 
-Experimental methods:
+### Launch the UI
 
 ```bash
-python -m src.evaluate_par4pc --retrieval-method local-cross-encoder
-python -m src.evaluate_par4pc --retrieval-method openai-embedding
-python -m src.evaluate_par4pc --retrieval-method llm-rerank
+./scripts/run_app.sh
 ```
 
-Current pilot result on bundled local `PAR4PC` samples:
+### Product UI usage
 
-```text
-local-embedding retrieval
-hit@1: 0.800
-hit@3: 1.000
-recall@3: 1.000
-exact@|gold|: 0.700
-```
+Mode:
+- `Our Patent Agent`
 
-Current interpretation:
+Then choose one of:
+- `Normal RAG baseline`
+- `Our optimized patent agent`
+- `Side-by-side comparison`
 
-- `local-embedding` with `AI-Growth-Lab/PatentSBERTa` is still the strongest benchmark default
-- `hybrid-coverage` is a patent-specific ablation that combines dense retrieval, BM25, and limitation coverage, but it does not yet beat PatentSBERTa on the bundled local sample set
-- `linear-patent-reranker` is the current learned benchmark experiment; it is trained on a cached HF train slice and is not the default demo path
-- the cached model is stored under `data/models/` so later processes can load it without retraining
+Recommended for demo:
+- `Side-by-side comparison`
 
-### 7.2 Retrieval comparison table
+What to expect:
+- left / baseline: top patents only, optional snippets
+- right / optimized: reranked results + grounded answer + verification
+
+### Benchmark UI usage
+
+Mode:
+- `Benchmark`
+
+Then choose:
+- `PatentSBERTa baseline`
+- or `Our learned reranker`
+
+Recommended for demo:
+1. show `PatentSBERTa baseline`
+2. switch to `Our learned reranker`
+3. compare outputs on the same case
+
+---
+
+## 10. Main experiment commands
+
+### Local benchmark evaluation
 
 ```bash
-python -m src.compare_retrieval --output outputs/retrieval_comparison.csv
+python -m src.evaluate_par4pc --retrieval-method local-embedding
+python -m src.evaluate_par4pc --retrieval-method linear-patent-reranker
 ```
 
-This compares:
-
-- `bm25`
-- `hybrid-coverage`
-- `local-embedding` with patent-domain and general-domain models
-- `local-cross-encoder` rerankers
-
-### 7.3 Larger-split HF evaluation
-
-Evaluate on a larger Hugging Face `PAR4PC` validation slice:
+### HF validation evaluation
 
 ```bash
 python -m src.evaluate_par4pc_hf \
@@ -272,41 +422,13 @@ python -m src.evaluate_par4pc_hf \
   --methods local-embedding linear-patent-reranker
 ```
 
-This is the main way to check whether a retrieval method still holds up beyond the bundled local examples.
-
-### 7.4 Patent-specialized ablation
-
-Run a quick component ablation over the patent-specialized reranker:
+### Retrieval comparison table
 
 ```bash
-python -m src.ablate_patent_specialized \
-  --splits validation \
-  --max-rows-per-split 30 \
-  --output outputs/patent_specialized_ablation.csv
+python -m src.compare_retrieval --output outputs/retrieval_comparison.csv
 ```
 
-### 7.5 Learned linear reranker experiments
-
-Forward-selection table over patent-specialized features:
-
-```bash
-python -m src.train_linear_patent_reranker \
-  --max-rows-per-split 100 \
-  --output outputs/linear_reranker_forward_selection_100.csv
-```
-
-Targeted single-config evaluation for the current best linear subset:
-
-```bash
-python -m src.train_linear_patent_reranker \
-  --mode single \
-  --max-rows-per-split 100 \
-  --feature-names dense_score bm25_score field_lexical_score \
-  --class-weight none \
-  --c-value 4.0
-```
-
-Train-size / feature-set scan:
+### Learned reranker scan
 
 ```bash
 python -m src.scan_linear_reranker_configs \
@@ -315,245 +437,116 @@ python -m src.scan_linear_reranker_configs \
   --output outputs/linear_reranker_scan.csv
 ```
 
-If you prebuilt the matching feature caches first, repeated scans reuse the parquet caches under `data/cache/features/` instead of recomputing all patent-specialized feature vectors.
-
-When trained on a separate HF train slice and evaluated on `validation-100`, the learned linear reranker currently:
-
-- best current config is `train_rows=200` with `dense_score + bm25_score + field_lexical_score`
-- this reaches `hit@1=0.600`, `hit@3=0.910`, `recall@3=0.850`, `exact@|gold|=0.510` on `validation-100`
-- compared with pure `local-embedding` at `hit@1=0.590`, `hit@3=0.860`, `recall@3=0.802`, `exact@|gold|=0.470`
-- it remains the preferred experimental benchmark path over the full hand-tuned `patent-specialized` score
-
-### 7.6 Benchmark report generation
-
-Heuristic / no-LLM:
-
-```bash
-python -m src.run_demo --retrieval-method local-embedding --output outputs/demo_report_verified.md
-```
-
-With LLM-backed benchmark steps:
-
-```bash
-python -m src.run_demo \
-  --retrieval-method llm-rerank \
-  --llm-decompose \
-  --llm-verify \
-  --output outputs/demo_report_llm.md
-```
-
-### 7.7 Single-turn free-text QA
-
-Heuristic grounded answer:
+### Free-text single-turn demo
 
 ```bash
 python -m src.run_free_text_demo
 ```
 
-With OpenAI grounded answer:
-
-```bash
-python -m src.run_free_text_demo --llm-answer
-```
-
-### 7.5 Multi-turn conversation demo
+### Free-text conversation demo
 
 ```bash
 python -m src.run_conversation_demo
 ```
 
-This tests:
+---
 
-1. new search
-2. aspect filter on current results
-3. compare previous results
-4. combination exploration with context-enriched retrieval
-
-## 8. What Each Mode Is For
-
-### Benchmark Analysis
-
-This is for labeled PANORAMA evaluation.
-
-It uses a known `PAR4PC` case and does:
-
-```text
-target claim
--> rank A-H candidate patents
--> decompose claim
--> extract evidence
--> verify evidence
--> render report
-```
-
-Use this mode for:
-
-- project evaluation
-- retrieval metrics
-- structured evidence demo
-
-### Free-text Search
-
-This is the user-facing patent search / QA mode.
-
-It does:
-
-```text
-user query or claim
--> decide whether to retrieve new or reuse context
--> retrieve or rerank patents
--> gather evidence snippets
--> answer from evidence
-```
-
-Use this mode for:
-
-- vague patent search
-- similar patent search
-- aspect filtering
-- follow-up questions
-- combination exploration
-
-## 9. Run the Streamlit UI
-
-Launch:
-
-```bash
-./scripts/run_app.sh
-```
-
-### Recommended demo configuration
-
-Set:
-
-- `Mode = Free-text Search`
-- `Retrieval method = local-embedding`
-- `Free-text patent pool = Persistent local index`
-- `Persistent index directory = data/indexes/par4pc_patentsberta_demo`
-
-Then click:
-
-- `Use example query`
-
-After that, try follow-up questions such as:
-
-```text
-Which of those also includes access control for the requested information?
-```
-
-```text
-Compare the top two patents for participant context and profile handling.
-```
-
-```text
-If I combine that with smart invitations, what related patents should I inspect next?
-```
-
-### Recommended benchmark configuration
-
-Set:
-
-- `Mode = Benchmark Analysis`
-- `Retrieval method = local-embedding`
-
-Then:
-
-- select a `PAR4PC` case
-- click `Analyze Benchmark Case`
-
-## 10. Manual Test Procedure
-
-If you want a minimal end-to-end test on a fresh machine, run these in order:
-
-```bash
-python -m compileall app.py src
-python -m src.build_patent_index --pool-source combined --hub-rows-per-split 50 --index-dir data/indexes/par4pc_patentsberta_demo
-python -m src.evaluate_par4pc --retrieval-method local-embedding
-python -m src.run_free_text_demo
-python -m src.run_conversation_demo
-./scripts/run_app.sh
-```
-
-This covers:
-
-- code integrity
-- index build
-- benchmark retrieval
-- single-turn QA
-- multi-turn QA
-- UI demo
-
-## 11. Input Guidance
-
-Best input:
-
-- full patent claim text, e.g. `1. A method comprising: ...`
-
-Also supported:
-
-- invention description
-- vague technical query
-- question over current retrieved results
-
-Examples:
-
-```text
-patents about event participants getting personalized information during a live event
-```
-
-```text
-find patents similar to systems and methods for presenting information extracted from one or more data sources to event participants
-```
-
-```text
-Which of those also includes access control for the requested information?
-```
-
-## 12. What Works Without OpenAI
+## 11. What works without OpenAI
 
 Without `OPENAI_API_KEY`, these still work:
-
-- benchmark retrieval
-- benchmark report generation with heuristic decomposition / verification
+- product baseline retrieval
+- optimized product retrieval
+- benchmark evaluation
 - persistent index build
-- free-text retrieval
-- heuristic grounded QA
-- multi-turn planner and working-set reuse
+- evidence extraction
+- heuristic grounded answer
+- heuristic answer verification
+- conversational planner and working-set reuse
 
-These require OpenAI:
-
-- `Use LLM grounded answer`
-- `Use LLM claim decomposition`
-- `Use LLM evidence verification`
+OpenAI is only needed for optional LLM-backed paths such as:
+- LLM grounded answer
+- LLM claim decomposition
+- LLM answer verification
 - `openai-embedding`
 - `llm-rerank`
 
-Patent-specific retrieval experiments available without OpenAI:
+---
 
-- `hybrid-coverage`
-- `local-embedding`
-- `bm25`
+## 12. Common problems
 
-## 13. Notes and Limitations
+### Problem: `ModuleNotFoundError: No module named 'torchvision'`
 
-- This is a technical prior-art exploration tool, not legal advice.
-- The planner for conversational follow-up is heuristic, not fully autonomous.
-- The benchmark evaluation is strongest on `PAR4PC`; free-text QA is a demo-oriented extension.
-- The quality of free-text search depends on the persistent index coverage.
-- The current patent-specific `hybrid-coverage` reranker addresses real patent-RAG pain points, but it still needs tuning before it can replace PatentSBERTa as the benchmark default.
+This usually means the conda environment is not the one expected by the repo.
 
-## 14. Preparing for GitHub
+Fix:
+
+```bash
+conda activate patent-agent
+pip install -r requirements.txt
+```
+
+Then launch with:
+
+```bash
+./scripts/run_app.sh
+```
+
+Do not start Streamlit from a random Python environment.
+
+### Problem: `import app` fails because `streamlit` is missing
+
+Same cause: wrong environment.
+
+Fix:
+
+```bash
+conda activate patent-agent
+```
+
+### Problem: the UI says the persistent index is missing
+
+Build it first:
+
+```bash
+python -m src.build_patent_index \
+  --pool-source combined \
+  --hub-rows-per-split 50 \
+  --index-dir data/indexes/par4pc_patentsberta_demo
+```
+
+### Problem: learned reranker is slow the first time
+
+Prebuild it:
+
+```bash
+python -m src.train_linear_patent_reranker \
+  --mode train-default-model \
+  --splits train \
+  --max-rows-per-split 200
+```
+
+---
+
+## 13. What the project still does not claim
+
+- This is not legal advice.
+- The product path is a technical prior-art exploration tool.
+- The benchmark is strongest on PANORAMA `PAR4PC`.
+- Product QA quality still depends on the coverage of the local index.
+
+---
+
+## 14. Git / repo notes
 
 Ignored by git:
-
 - `.env`
-- `.venv/`
 - `outputs/`
 - `data/indexes/`
-- caches
+- `data/models/`
+- `data/cache/`
 - local Streamlit secrets
 
-To push this repo:
+To push:
 
 ```bash
 git remote add origin <your-github-repo-url>
