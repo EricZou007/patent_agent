@@ -66,6 +66,27 @@ For the final reported retrieval comparison, we used:
 
 This is the full validation set, not just a small subset.
 
+## What This Evaluation Does Not Include
+
+The reported metrics in this document are for **retrieval / reranking only**.
+
+They do **not** include:
+
+- claim reformulation
+- LLM claim decomposition
+- heuristic claim decomposition
+- query expansion
+- grounded answer generation
+- answer verification
+
+Those features belong to:
+
+- product-mode QA behavior
+- benchmark analysis tooling
+- optional ablation / engineering paths
+
+They are not part of the final retrieval metrics reported here unless a separate experiment explicitly turns them on and evaluates them.
+
 ## Methods Compared
 
 We evaluated these three main retrieval methods:
@@ -138,11 +159,23 @@ Whether the top-`|gold|` predictions exactly match the gold answer set.
 
 Validation split: `3,029` cases
 
-| Method | Hit@1 | Hit@3 | Recall@3 | Exact@|gold| |
-|---|---:|---:|---:|---:|
-| `bm25` | 0.718 | 0.926 | 0.843 | 0.560 |
-| `local-embedding` | 0.714 | 0.950 | 0.885 | 0.570 |
-| `linear-patent-reranker` | 0.754 | 0.959 | 0.901 | 0.622 |
+- `bm25`
+  - `Hit@1 = 0.718`
+  - `Hit@3 = 0.926`
+  - `Recall@3 = 0.843`
+  - `Exact@|gold| = 0.560`
+
+- `local-embedding`
+  - `Hit@1 = 0.714`
+  - `Hit@3 = 0.950`
+  - `Recall@3 = 0.885`
+  - `Exact@|gold| = 0.570`
+
+- `linear-patent-reranker`
+  - `Hit@1 = 0.754`
+  - `Hit@3 = 0.959`
+  - `Recall@3 = 0.901`
+  - `Exact@|gold| = 0.622`
 
 ## Interpretation
 

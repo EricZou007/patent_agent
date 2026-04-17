@@ -36,9 +36,10 @@ Dataset:
 
 Full validation metrics:
 
-| Method | Hit@1 | Hit@3 | Recall@3 | Exact@|gold| |
-|---|---:|---:|---:|---:|
-| `bm25` | 0.718 | 0.926 | 0.843 | 0.560 |
+- `Hit@1 = 0.718`
+- `Hit@3 = 0.926`
+- `Recall@3 = 0.843`
+- `Exact@|gold| = 0.560`
 
 Command used:
 
@@ -53,17 +54,19 @@ python -m src.evaluate_par4pc_hf \
 
 Full validation metrics:
 
-| Method | Hit@1 | Hit@3 | Recall@3 | Exact@|gold| |
-|---|---:|---:|---:|---:|
-| `local-embedding` | 0.714 | 0.950 | 0.885 | 0.570 |
+- `Hit@1 = 0.714`
+- `Hit@3 = 0.950`
+- `Recall@3 = 0.885`
+- `Exact@|gold| = 0.570`
 
 #### `linear-patent-reranker`
 
 Full validation metrics:
 
-| Method | Hit@1 | Hit@3 | Recall@3 | Exact@|gold| |
-|---|---:|---:|---:|---:|
-| `linear-patent-reranker` | 0.754 | 0.959 | 0.901 | 0.622 |
+- `Hit@1 = 0.754`
+- `Hit@3 = 0.959`
+- `Recall@3 = 0.901`
+- `Exact@|gold| = 0.622`
 
 The full-validation run for the pretrained baseline plus our optimized method was:
 
@@ -141,11 +144,23 @@ If you need one clean comparison for the current project story, use:
 
 Use the full `validation` split table:
 
-| Method | Hit@1 | Hit@3 | Recall@3 | Exact@|gold| |
-|---|---:|---:|---:|---:|
-| `bm25` | 0.718 | 0.926 | 0.843 | 0.560 |
-| `local-embedding` | 0.714 | 0.950 | 0.885 | 0.570 |
-| `linear-patent-reranker` | 0.754 | 0.959 | 0.901 | 0.622 |
+- `bm25`
+  - `Hit@1 = 0.718`
+  - `Hit@3 = 0.926`
+  - `Recall@3 = 0.843`
+  - `Exact@|gold| = 0.560`
+
+- `local-embedding`
+  - `Hit@1 = 0.714`
+  - `Hit@3 = 0.950`
+  - `Recall@3 = 0.885`
+  - `Exact@|gold| = 0.570`
+
+- `linear-patent-reranker`
+  - `Hit@1 = 0.754`
+  - `Hit@3 = 0.959`
+  - `Recall@3 = 0.901`
+  - `Exact@|gold| = 0.622`
 
 Interpretation:
 
@@ -157,10 +172,17 @@ Interpretation:
 
 For the smaller completed `validation-100` comparison:
 
-| Method | Hit@1 | Hit@3 | Recall@3 | Exact@|gold| |
-|---|---:|---:|---:|---:|
-| `local-embedding` | 0.590 | 0.860 | 0.802 | 0.470 |
-| `linear-patent-reranker` | 0.600 | 0.910 | 0.850 | 0.510 |
+- `local-embedding`
+  - `Hit@1 = 0.590`
+  - `Hit@3 = 0.860`
+  - `Recall@3 = 0.802`
+  - `Exact@|gold| = 0.470`
+
+- `linear-patent-reranker`
+  - `Hit@1 = 0.600`
+  - `Hit@3 = 0.910`
+  - `Recall@3 = 0.850`
+  - `Exact@|gold| = 0.510`
 
 ## Reproduction Commands
 
