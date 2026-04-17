@@ -226,6 +226,41 @@ In short:
 - product mode is for user-facing patent search and QA
 - benchmark mode is for validating retrieval improvements before or while moving them into the product path
 
+### What data we actually build the product patent pool from
+
+The product patent pool is derived from PANORAMA `PAR4PC`.
+
+It is **not** a separate full patent database. We build it by:
+
+```text
+PAR4PC rows
+-> extract candidate patents from each row's A-H options
+-> deduplicate by patent_id
+-> build a local FAISS index
+```
+
+Across the full Hugging Face `PAR4PC` splits:
+
+- `train`: `54,028` cases
+- `validation`: `3,029` cases
+- `test`: `2,896` cases
+
+Total:
+
+- **59,953 retrieval cases**
+
+Each case has exactly `8` candidate patents, so the full benchmark contains:
+
+- **479,624 claim-candidate pairs**
+
+After deduplicating all candidate patents across `train + validation + test`, the PAR4PC-derived candidate pool contains:
+
+- **17,877 unique patents**
+
+This is the upper bound of the PANORAMA-derived product patent pool.
+
+The local product indexes currently built in this repo are smaller subsets for demo and iteration, not the full 17,877-patent pool.
+
 ---
 
 ## 5. Current benchmark setup
@@ -366,6 +401,7 @@ data/indexes/par4pc_patentsberta_demo/
 What this means:
 - `combined` = local PANORAMA sample patents + a small Hub slice
 - good enough for demo and UI testing
+- current size on this machine: **128 patents**
 
 Larger index example:
 
@@ -375,6 +411,11 @@ python -m src.build_patent_index \
   --hub-rows-per-split 2000 \
   --index-dir data/indexes/par4pc_patentsberta_large
 ```
+
+Current medium-size local index already built on this machine:
+
+- `data/indexes/par4pc_patentsberta_medium`
+- **984 patents**
 
 ---
 
